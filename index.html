@@ -1,0 +1,1725 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>러시아워 (RUSH HOUR)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Pretendard:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-from: #1e293b;
+      --bg-via: #0f172a;
+      --bg-to: #090d16;
+      --theme-accent: #ef4444;
+      --theme-glow: rgba(239, 68, 68, 0.25);
+      --board-border: #475569;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100dvh;
+      max-height: 100vh;
+      overflow: hidden;
+      font-family: 'Pretendard', sans-serif;
+      background: radial-gradient(circle at 50% 18%, var(--bg-from) 0%, var(--bg-via) 55%, var(--bg-to) 100%);
+      color: #f8fafc;
+      touch-action: none;
+      transition: background 0.45s ease;
+    }
+
+    /* Ambient Glow Orb matching Difficulty Theme */
+    .ambient-glow {
+      position: fixed;
+      top: -12%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 75vw;
+      height: 45dvh;
+      background: radial-gradient(circle, var(--theme-glow) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+      transition: background 0.45s ease;
+    }
+
+    .font-title {
+      font-family: 'Black Han Sans', sans-serif;
+      letter-spacing: 0.04em;
+    }
+
+    /* Responsive Square Board Container that NEVER overflows tablet height/width */
+    .board-wrapper {
+      width: min(84vw, 62dvh);
+      height: min(84vw, 62dvh);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* 6x6 Physical Asphalt Board Frame */
+    .board-frame {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      background: linear-gradient(145deg, #2d3748, #1a202c);
+      border-radius: 1.5rem;
+      padding: 14px;
+      box-shadow:
+        0 22px 45px -10px rgba(0, 0, 0, 0.78),
+        0 0 28px var(--theme-glow),
+        inset 0 2px 4px rgba(255, 255, 255, 0.15),
+        inset 0 -6px 12px rgba(0, 0, 0, 0.65);
+      border: 4px solid var(--board-border);
+      touch-action: none;
+      transition: border-color 0.4s ease, box-shadow 0.4s ease;
+    }
+
+    /* Exit Gate on Row 2 (3rd row from top, 0-indexed r:2) Right Edge */
+    .exit-notch {
+      position: absolute;
+      right: -6px;
+      width: 20px;
+      background: linear-gradient(90deg, #1e293b 0%, #ef4444 100%);
+      border-top: 3px solid var(--board-border);
+      border-bottom: 3px solid var(--board-border);
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 0 6px 6px 0;
+      box-shadow: 4px 0 14px rgba(239, 68, 68, 0.55);
+    }
+
+    .board-grid {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background-color: #171c26;
+      border-radius: 1rem;
+      padding: 6px;
+      box-shadow: inset 0 4px 12px rgba(0, 0, 0, 0.88);
+      touch-action: none;
+    }
+
+    .grid-cells {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      grid-template-rows: repeat(6, 1fr);
+      width: 100%;
+      height: 100%;
+      gap: 6px;
+    }
+
+    .grid-cell {
+      background: #0f131a;
+      border-radius: 0.55rem;
+      box-shadow:
+        inset 0 2px 5px rgba(0, 0, 0, 0.9),
+        0 1px 1px rgba(255, 255, 255, 0.05);
+      position: relative;
+    }
+
+    /* Vehicles Overlay */
+    .vehicles-layer {
+      position: absolute;
+      inset: 6px;
+      pointer-events: none;
+      overflow: visible;
+    }
+
+    .vehicle {
+      position: absolute;
+      pointer-events: auto;
+      padding: 3px;
+      transition: left 0.15s cubic-bezier(0.22, 1, 0.36, 1), top 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+      cursor: grab;
+      z-index: 10;
+      touch-action: none;
+    }
+    .vehicle.dragging {
+      transition: none !important;
+      cursor: grabbing;
+      z-index: 30;
+    }
+    .vehicle.selected {
+      z-index: 25;
+    }
+    /* Clean glow outline when selected (No arrows on vehicles) */
+    .vehicle.selected .vehicle-body {
+      outline: 3px solid #facc15;
+      box-shadow:
+        0 0 0 5px rgba(250, 204, 21, 0.38),
+        0 10px 20px rgba(0, 0, 0, 0.75);
+    }
+
+    .vehicle-body {
+      width: 100%;
+      height: 100%;
+      border-radius: 0.7rem;
+      position: relative;
+      box-shadow:
+        0 5px 10px rgba(0, 0, 0, 0.65),
+        inset 0 2px 4px rgba(255, 255, 255, 0.42),
+        inset 0 -4px 6px rgba(0, 0, 0, 0.42);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      transition: box-shadow 0.15s ease, outline 0.15s ease;
+    }
+
+    /* Red Hero Car Escape Animation */
+    .vehicle.exiting {
+      transition: left 0.55s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      z-index: 40;
+    }
+  </style>
+</head>
+<body class="w-full h-full flex flex-col justify-between items-center p-3 sm:p-5 select-none overflow-hidden relative">
+
+  <!-- Ambient Theme Glow Layer -->
+  <div class="ambient-glow"></div>
+
+  <!-- ==================== 1. MAIN MENU SCREEN ==================== -->
+  <div id="screen-main" class="relative z-10 w-full max-w-3xl h-full flex flex-col justify-between py-1 sm:py-2">
+    <!-- Top Header -->
+    <div class="text-center">
+      <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-red-500/20 border border-red-500/40 text-red-300 font-bold text-xs tracking-wider mb-1">
+        <span>🏎️ CLASSIC SLIDING BLOCK PUZZLE</span>
+      </div>
+      <h1 class="font-title text-4xl sm:text-5xl text-white tracking-wide drop-shadow">
+        러시아워 <span class="text-red-500">RUSH HOUR</span>
+      </h1>
+      <p class="text-slate-300/90 text-xs sm:text-sm mt-0.5 font-medium">
+        막혀있는 차량들을 이동시켜 <b class="text-red-400">빨간 스포츠카</b>를 오른쪽 출구로 탈출시키세요!
+      </p>
+    </div>
+
+    <!-- Overall Status Bar -->
+    <div class="bg-slate-900/85 border border-slate-700/80 rounded-2xl px-4 py-2.5 flex items-center justify-between shadow-lg backdrop-blur-md">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center justify-center text-xl">
+          🏁
+        </div>
+        <div>
+          <div class="text-[11px] font-bold text-slate-400">전체 스테이지 클리어 진행도</div>
+          <div class="text-base sm:text-lg font-extrabold text-white">
+            총 <span id="total-cleared-count" class="text-red-400">0</span> / 40 스테이지 완료
+          </div>
+        </div>
+      </div>
+      <button onclick="openResetConfirmModal()" class="text-xs font-bold text-slate-300 hover:text-red-400 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition active:scale-95">
+        기록 초기화
+      </button>
+    </div>
+
+    <!-- 2x2 Difficulty Cards Grid (No individual stage buttons on main screen) -->
+    <div id="difficulty-cards-container" class="grid grid-cols-2 gap-3 sm:gap-4 flex-1 my-3 min-h-0">
+      <!-- Populated dynamically by JS -->
+    </div>
+
+    <!-- Compact Footer Guide -->
+    <div class="bg-slate-900/75 border border-slate-700/80 rounded-xl px-4 py-2 text-center text-xs text-slate-300 flex items-center justify-center gap-4 flex-wrap backdrop-blur-sm">
+      <span>👆 <b>터치 & 스와이프:</b> 차량을 터치해 상하/좌우로 드래그</span>
+      <span class="hidden sm:inline text-slate-600">|</span>
+      <span>⌨️ <b>키보드 방향키:</b> 차량 선택 후 화살표(▲▼◀▶ / WASD) 이동</span>
+    </div>
+  </div>
+
+  <!-- ==================== 2. GAMEPLAY SCREEN ==================== -->
+  <div id="screen-game" class="hidden relative z-10 w-full max-w-2xl h-full flex flex-col justify-between items-center py-1">
+    <!-- Top Bar: Main Button + Difficulty & Stage Progress + Reset/Undo -->
+    <div class="w-full flex flex-col gap-2">
+      <div class="w-full flex items-center justify-between gap-2">
+        <button onclick="returnToMainMenu()" class="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-200 font-bold text-xs sm:text-sm border border-slate-700/80 active:scale-95 transition backdrop-blur-md">
+          <span>◀</span>
+          <span>메인화면</span>
+        </button>
+
+        <div class="flex items-center gap-2">
+          <span id="game-tier-badge" class="px-3 py-1 rounded-full text-xs font-extrabold uppercase shadow-sm">
+            쉬움
+          </span>
+          <div class="px-3.5 py-1.5 rounded-xl bg-slate-900/85 border border-slate-700/80 font-extrabold text-sm sm:text-base text-white backdrop-blur-md">
+            STAGE <span id="game-stage-num" class="text-amber-400">1</span> <span class="text-slate-400 text-xs">/ 10</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+          <button id="btn-undo" onclick="undoMove()" disabled class="px-3 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 disabled:opacity-35 text-slate-200 font-bold text-xs sm:text-sm border border-slate-700/80 active:scale-95 transition backdrop-blur-md">
+            ↩ 되돌리기
+          </button>
+          <button onclick="resetCurrentStage()" class="px-3 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-200 font-bold text-xs sm:text-sm border border-red-500/40 active:scale-95 transition backdrop-blur-md">
+            🔄 초기화
+          </button>
+        </div>
+      </div>
+
+      <!-- Compact Stats & 10-Stage Sequential Progress Bar -->
+      <div class="w-full bg-slate-900/85 border border-slate-700/80 rounded-2xl px-3.5 py-2 flex items-center justify-between gap-3 backdrop-blur-md shadow-lg">
+        <!-- Sequential 1..10 Progress Indicators -->
+        <div id="stage-progress-pills" class="flex items-center gap-1 flex-1">
+          <!-- 1..10 status pills -->
+        </div>
+
+        <!-- Moves & Time -->
+        <div class="flex items-center gap-3 shrink-0 border-l border-slate-700 pl-3">
+          <div class="text-right">
+            <div class="text-[10px] font-bold text-slate-400">이동 횟수</div>
+            <div id="stat-moves" class="text-sm sm:text-base font-extrabold text-amber-400">0회</div>
+          </div>
+          <div class="text-right">
+            <div class="text-[10px] font-bold text-slate-400">소요 시간</div>
+            <div id="stat-time" class="text-sm sm:text-base font-extrabold text-sky-400 font-mono">00:00</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center 6x6 Board (Fits inside tablet screen without scrolling) -->
+    <div class="my-auto flex items-center justify-center">
+      <div class="board-wrapper">
+        <div id="board-frame" class="board-frame">
+          <!-- Exit Gate at Row 2 (3rd row) -->
+          <div class="exit-notch" style="top: calc(14px + 6px + (100% - 40px) * 2 / 6); height: calc((100% - 40px) / 6);">
+            <span class="text-[9px] font-black text-white tracking-tighter rotate-90 select-none">EXIT</span>
+          </div>
+
+          <div id="board-grid" class="board-grid">
+            <!-- 36 Cells -->
+            <div id="grid-cells-container" class="grid-cells"></div>
+            <!-- Vehicles Layer -->
+            <div id="vehicles-layer" class="vehicles-layer"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Minimal Hint Bar (No arrow buttons pad) -->
+    <div class="w-full text-center py-1">
+      <span id="selected-car-info" class="inline-block px-4 py-1.5 rounded-full bg-slate-900/85 border border-slate-700/80 text-xs font-bold text-slate-200 backdrop-blur-md shadow">
+        빨간 스포츠카 선택됨 · 좌우로 스와이프하거나 방향키(◀/▶)로 이동하세요
+      </span>
+    </div>
+  </div>
+
+  <!-- ==================== 3. STAGE CLEAR MODAL (Stages 1 ~ 9) ==================== -->
+  <div id="modal-stage-clear" class="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 rounded-3xl max-w-sm w-full p-6 shadow-2xl border-2 border-amber-400/80 text-center">
+      <div class="w-14 h-14 rounded-2xl bg-red-500/20 border border-red-500/40 mx-auto flex items-center justify-center text-3xl mb-2">
+        🏎️
+      </div>
+      <div id="clear-modal-badge" class="inline-block px-3 py-0.5 rounded-full text-xs font-extrabold uppercase mb-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+        STAGE 1 CLEAR!
+      </div>
+      <h2 class="font-title text-3xl text-white mb-1">탈출 성공!</h2>
+
+      <div class="grid grid-cols-2 gap-3 bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 my-4">
+        <div>
+          <div class="text-xs font-bold text-slate-400">이번 이동 횟수</div>
+          <div id="clear-modal-moves" class="text-xl font-extrabold text-amber-400 mt-0.5">0회</div>
+        </div>
+        <div>
+          <div class="text-xs font-bold text-slate-400">이번 소요 시간</div>
+          <div id="clear-modal-time" class="text-xl font-extrabold text-sky-400 font-mono mt-0.5">00:00</div>
+        </div>
+      </div>
+
+      <div class="flex gap-2.5">
+        <button onclick="replayStageFromModal()" class="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-sm border border-slate-700 transition">
+          다시하기
+        </button>
+        <button id="btn-next-stage" onclick="proceedAfterStageClear()" class="flex-[1.6] py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-extrabold text-sm shadow-lg shadow-red-500/30 transition">
+          다음 스테이지 ▶
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 4. DIFFICULTY FINAL SUMMARY SCREEN (After Stage 10) ==================== -->
+  <div id="screen-summary" class="hidden relative z-10 w-full max-w-2xl h-full flex flex-col justify-between py-2">
+    <div class="bg-slate-900/90 backdrop-blur-md rounded-3xl p-5 sm:p-6 shadow-2xl border-2 border-amber-400/80 flex flex-col justify-between h-full">
+      <!-- Header -->
+      <div class="text-center">
+        <span id="summary-tier-badge" class="px-3.5 py-1 rounded-full text-xs font-extrabold uppercase shadow-sm">
+          쉬움 (EASY) 완료
+        </span>
+        <h2 id="summary-title" class="font-title text-3xl sm:text-4xl text-white mt-2">
+          쉬움 단계 10개 스테이지 완주! 🏆
+        </h2>
+        <p class="text-slate-300 text-xs sm:text-sm mt-0.5">
+          1번부터 10번까지 모든 스테이지를 클리어했습니다. 최종 합산 기록을 확인하세요!
+        </p>
+      </div>
+
+      <!-- Total Moves & Total Time Cards -->
+      <div class="grid grid-cols-2 gap-3 my-3">
+        <div class="bg-slate-950/85 border border-amber-500/40 rounded-2xl p-3.5 text-center">
+          <div class="text-xs font-extrabold text-amber-400">10개 스테이지 총 이동 횟수</div>
+          <div id="summary-total-moves" class="font-title text-3xl sm:text-4xl text-white mt-1">0회</div>
+        </div>
+        <div class="bg-slate-950/85 border border-sky-500/40 rounded-2xl p-3.5 text-center">
+          <div class="text-xs font-extrabold text-sky-400">10개 스테이지 총 소요 시간</div>
+          <div id="summary-total-time" class="font-title text-3xl sm:text-4xl text-white mt-1">0초</div>
+        </div>
+      </div>
+
+      <!-- 10 Stages Compact 2-Column Breakdown Grid (No scrolling required) -->
+      <div class="bg-slate-950/65 rounded-2xl border border-slate-800 p-3 flex-1 flex flex-col justify-center min-h-0">
+        <div class="text-xs font-extrabold text-slate-400 mb-2 px-1 flex justify-between">
+          <span>스테이지별 상세 기록 (1 ~ 10)</span>
+          <span class="text-emerald-400">10 / 10 CLEAR</span>
+        </div>
+        <div id="summary-stages-grid" class="grid grid-cols-2 gap-2">
+          <!-- 10 items populated by JS -->
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex gap-3 mt-4">
+        <button onclick="restartTierFromStageOne()" class="flex-1 py-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-sm border border-slate-700 transition">
+          🔄 이 난이도 1단계부터 다시 도전
+        </button>
+        <button onclick="returnToMainMenu()" class="flex-[1.4] py-3.5 rounded-2xl bg-red-500 hover:bg-red-600 text-white font-extrabold text-sm shadow-lg shadow-red-500/30 transition">
+          🏠 메인 화면으로 돌아가기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 5. RESET CONFIRM MODAL ==================== -->
+  <div id="modal-reset-confirm" class="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-slate-900 rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-700 text-center">
+      <div class="text-3xl mb-2">⚠️</div>
+      <h3 class="font-title text-2xl text-white mb-1">전체 기록 초기화</h3>
+      <p class="text-xs sm:text-sm text-slate-400 mb-5">
+        모든 난이도의 스테이지 진행도와 기록을 초기화하시겠습니까?
+      </p>
+      <div class="flex gap-2.5">
+        <button onclick="closeResetConfirmModal()" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm border border-slate-700">
+          취소
+        </button>
+        <button onclick="confirmResetAllRecords()" class="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm">
+          초기화
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /*************************************************************************
+     * [사용자 편집 영역] 4개 난이도 × 10개 스테이지 자동차 배치 데이터 (STAGE_DATA)
+     * -----------------------------------------------------------------------
+     * - 보드 크기: 6행(r: 0 ~ 5) × 6열(c: 0 ~ 5) (왼쪽 위가 r:0, c:0)
+     * - 탈출 차량: id가 'T'인 빨간 스포츠카 (항상 r: 2, dir: 'H', len: 2)
+     * - 일반 차량 속성:
+     *   id   : 차량 고유 이름 ('A', 'B', 'C' 등)
+     *   r    : 시작 행 번호 (0 ~ 5)
+     *   c    : 시작 열 번호 (0 ~ 5)
+     *   len  : 차량 길이 (2 = 승용차, 3 = 트럭/버스)
+     *   dir  : 이동 방향 ('H' = 가로 이동, 'V' = 세로 이동)
+     *   color: 차량 색상 ('red', 'yellow', 'amber', 'gold', 'orange', 'coral', 'lime', 'teal', 'pink', 'purple', 'indigo', 'blue', 'cyan', 'silver')
+     *************************************************************************/
+    const STAGE_DATA = {
+      easy: [
+        // #1
+        [
+          { id: 'T', r: 2, c: 1, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 2, len: 2, dir: 'V', color: 'lime' },
+          { id: 'B', r: 1, c: 3, len: 3, dir: 'H', color: 'yellow' },
+          { id: 'C', r: 2, c: 4, len: 2, dir: 'V', color: 'purple' },
+          { id: 'D', r: 4, c: 4, len: 2, dir: 'V', color: 'blue' }
+        ],
+        // #2
+        [
+          { id: 'T', r: 2, c: 1, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 4, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'B', r: 3, c: 3, len: 3, dir: 'H', color: 'orange' },
+          { id: 'C', r: 3, c: 2, len: 2, dir: 'V', color: 'lime' }
+        ],
+        // #3
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 5, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'B', r: 3, c: 0, len: 3, dir: 'V', color: 'orange' },
+          { id: 'C', r: 3, c: 1, len: 2, dir: 'H', color: 'lime' },
+          { id: 'D', r: 3, c: 3, len: 3, dir: 'H', color: 'amber' }
+        ],
+        // #4
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 3, dir: 'H', color: 'yellow' },
+          { id: 'B', r: 1, c: 2, len: 2, dir: 'V', color: 'pink' },
+          { id: 'C', r: 3, c: 2, len: 3, dir: 'V', color: 'amber' },
+          { id: 'D', r: 0, c: 5, len: 2, dir: 'V', color: 'lime' },
+          { id: 'E', r: 2, c: 5, len: 3, dir: 'V', color: 'orange' },
+          { id: 'F', r: 5, c: 4, len: 2, dir: 'H', color: 'purple' }
+        ],
+        // #5
+        [
+          { id: 'T', r: 2, c: 3, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 3, len: 2, dir: 'V', color: 'lime' },
+          { id: 'B', r: 0, c: 5, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'C', r: 3, c: 3, len: 2, dir: 'V', color: 'pink' },
+          { id: 'D', r: 4, c: 4, len: 2, dir: 'H', color: 'blue' }
+        ],
+        // #6
+        [
+          { id: 'T', r: 2, c: 3, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 5, len: 2, dir: 'V', color: 'lime' },
+          { id: 'B', r: 2, c: 5, len: 2, dir: 'V', color: 'pink' },
+          { id: 'C', r: 3, c: 3, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'D', r: 4, c: 4, len: 2, dir: 'H', color: 'blue' }
+        ],
+        // #7
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 2, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'B', r: 3, c: 0, len: 3, dir: 'H', color: 'amber' },
+          { id: 'C', r: 4, c: 0, len: 3, dir: 'H', color: 'orange' },
+          { id: 'D', r: 2, c: 5, len: 3, dir: 'V', color: 'coral' },
+          { id: 'E', r: 5, c: 4, len: 2, dir: 'H', color: 'silver' }
+        ],
+        // #8
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 2, len: 2, dir: 'V', color: 'lime' },
+          { id: 'B', r: 2, c: 2, len: 2, dir: 'V', color: 'pink' },
+          { id: 'C', r: 4, c: 2, len: 3, dir: 'H', color: 'orange' },
+          { id: 'D', r: 3, c: 5, len: 3, dir: 'V', color: 'yellow' }
+        ],
+        // #9
+        [
+          { id: 'T', r: 2, c: 3, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 3, c: 0, len: 3, dir: 'H', color: 'orange' },
+          { id: 'B', r: 4, c: 2, len: 2, dir: 'V', color: 'pink' },
+          { id: 'C', r: 3, c: 4, len: 2, dir: 'V', color: 'blue' },
+          { id: 'D', r: 2, c: 5, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'E', r: 5, c: 3, len: 3, dir: 'H', color: 'amber' }
+        ],
+        // #10
+        [
+          { id: 'T', r: 2, c: 1, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 1, c: 0, len: 2, dir: 'V', color: 'pink' },
+          { id: 'B', r: 0, c: 2, len: 2, dir: 'H', color: 'lime' },
+          { id: 'C', r: 1, c: 3, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'D', r: 0, c: 4, len: 3, dir: 'V', color: 'amber' },
+          { id: 'E', r: 1, c: 5, len: 3, dir: 'V', color: 'orange' },
+          { id: 'F', r: 4, c: 2, len: 2, dir: 'V', color: 'blue' },
+          { id: 'G', r: 4, c: 4, len: 2, dir: 'H', color: 'silver' },
+          { id: 'H', r: 5, c: 3, len: 3, dir: 'H', color: 'coral' }
+        ]
+      ],
+      medium: [
+        // #11
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 1, len: 3, dir: 'H', color: 'yellow' },
+          { id: 'B', r: 0, c: 4, len: 2, dir: 'H', color: 'lime' },
+          { id: 'C', r: 1, c: 4, len: 2, dir: 'H', color: 'pink' },
+          { id: 'D', r: 2, c: 2, len: 2, dir: 'V', color: 'blue' },
+          { id: 'E', r: 4, c: 0, len: 3, dir: 'H', color: 'orange' },
+          { id: 'F', r: 2, c: 5, len: 2, dir: 'V', color: 'silver' },
+          { id: 'G', r: 4, c: 5, len: 2, dir: 'V', color: 'purple' }
+        ],
+        // #12
+        [
+          { id: 'T', r: 2, c: 3, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 2, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'B', r: 0, c: 4, len: 2, dir: 'V', color: 'lime' },
+          { id: 'C', r: 1, c: 5, len: 3, dir: 'V', color: 'orange' },
+          { id: 'D', r: 3, c: 3, len: 3, dir: 'V', color: 'amber' },
+          { id: 'E', r: 4, c: 4, len: 2, dir: 'H', color: 'purple' }
+        ],
+        // #13
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 2, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'B', r: 4, c: 0, len: 3, dir: 'H', color: 'amber' },
+          { id: 'C', r: 3, c: 5, len: 3, dir: 'V', color: 'orange' }
+        ],
+        // #14
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 1, len: 2, dir: 'V', color: 'lime' },
+          { id: 'B', r: 0, c: 2, len: 2, dir: 'H', color: 'pink' },
+          { id: 'C', r: 1, c: 2, len: 2, dir: 'H', color: 'blue' },
+          { id: 'D', r: 0, c: 4, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'E', r: 1, c: 5, len: 2, dir: 'V', color: 'silver' },
+          { id: 'F', r: 2, c: 2, len: 3, dir: 'V', color: 'orange' },
+          { id: 'G', r: 3, c: 3, len: 2, dir: 'H', color: 'purple' }
+        ],
+        // #15
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 3, len: 2, dir: 'V', color: 'silver' },
+          { id: 'B', r: 2, c: 3, len: 2, dir: 'V', color: 'pink' },
+          { id: 'C', r: 0, c: 4, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'D', r: 3, c: 4, len: 3, dir: 'V', color: 'amber' },
+          { id: 'E', r: 4, c: 1, len: 2, dir: 'V', color: 'purple' },
+          { id: 'F', r: 4, c: 2, len: 2, dir: 'H', color: 'teal' }
+        ],
+        // #16
+        [
+          { id: 'T', r: 2, c: 2, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 1, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'B', r: 0, c: 2, len: 2, dir: 'H', color: 'lime' },
+          { id: 'C', r: 0, c: 4, len: 3, dir: 'V', color: 'orange' },
+          { id: 'D', r: 3, c: 3, len: 3, dir: 'H', color: 'amber' },
+          { id: 'E', r: 4, c: 2, len: 2, dir: 'V', color: 'pink' }
+        ],
+        // #17
+        [
+          { id: 'T', r: 2, c: 1, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 3, c: 0, len: 2, dir: 'H', color: 'lime' },
+          { id: 'B', r: 4, c: 0, len: 2, dir: 'V', color: 'blue' },
+          { id: 'C', r: 4, c: 2, len: 2, dir: 'V', color: 'silver' },
+          { id: 'D', r: 2, c: 3, len: 3, dir: 'V', color: 'orange' },
+          { id: 'E', r: 2, c: 4, len: 2, dir: 'V', color: 'pink' },
+          { id: 'F', r: 0, c: 5, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'G', r: 4, c: 4, len: 2, dir: 'H', color: 'purple' },
+          { id: 'H', r: 5, c: 3, len: 3, dir: 'H', color: 'amber' }
+        ],
+        // #18
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 2, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'B', r: 0, c: 3, len: 3, dir: 'V', color: 'orange' },
+          { id: 'C', r: 3, c: 1, len: 2, dir: 'V', color: 'lime' },
+          { id: 'D', r: 4, c: 2, len: 2, dir: 'H', color: 'pink' },
+          { id: 'E', r: 3, c: 5, len: 3, dir: 'V', color: 'amber' }
+        ],
+        // #19
+        [
+          { id: 'T', r: 2, c: 3, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 2, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'B', r: 0, c: 5, len: 3, dir: 'V', color: 'orange' },
+          { id: 'C', r: 4, c: 3, len: 2, dir: 'V', color: 'lime' },
+          { id: 'D', r: 4, c: 4, len: 2, dir: 'V', color: 'pink' },
+          { id: 'E', r: 5, c: 0, len: 3, dir: 'H', color: 'amber' }
+        ],
+        // #20
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 3, dir: 'H', color: 'yellow' },
+          { id: 'B', r: 0, c: 3, len: 2, dir: 'V', color: 'lime' },
+          { id: 'C', r: 0, c: 5, len: 2, dir: 'V', color: 'amber' },
+          { id: 'D', r: 3, c: 0, len: 3, dir: 'V', color: 'orange' },
+          { id: 'E', r: 2, c: 2, len: 2, dir: 'V', color: 'blue' },
+          { id: 'F', r: 4, c: 1, len: 3, dir: 'H', color: 'coral' },
+          { id: 'G', r: 4, c: 4, len: 2, dir: 'H', color: 'silver' }
+        ]
+      ],
+      hard: [
+        // #21
+        [
+          { id: 'T', r: 2, c: 1, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 3, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'B', r: 2, c: 4, len: 3, dir: 'V', color: 'orange' },
+          { id: 'C', r: 4, c: 0, len: 2, dir: 'V', color: 'lime' },
+          { id: 'D', r: 4, c: 1, len: 2, dir: 'V', color: 'pink' },
+          { id: 'E', r: 4, c: 2, len: 2, dir: 'H', color: 'silver' },
+          { id: 'F', r: 5, c: 2, len: 3, dir: 'H', color: 'amber' }
+        ],
+        // #22
+        [
+          { id: 'T', r: 2, c: 2, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 1, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'B', r: 3, c: 0, len: 3, dir: 'H', color: 'amber' },
+          { id: 'C', r: 4, c: 0, len: 2, dir: 'H', color: 'purple' },
+          { id: 'D', r: 5, c: 0, len: 2, dir: 'H', color: 'pink' },
+          { id: 'E', r: 2, c: 4, len: 3, dir: 'V', color: 'orange' },
+          { id: 'F', r: 5, c: 3, len: 2, dir: 'H', color: 'blue' }
+        ],
+        // #23
+        [
+          { id: 'T', r: 2, c: 3, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 2, len: 2, dir: 'V', color: 'lime' },
+          { id: 'B', r: 2, c: 2, len: 2, dir: 'V', color: 'pink' },
+          { id: 'C', r: 0, c: 4, len: 2, dir: 'V', color: 'yellow' },
+          { id: 'D', r: 3, c: 3, len: 2, dir: 'H', color: 'blue' },
+          { id: 'E', r: 4, c: 3, len: 2, dir: 'V', color: 'amber' },
+          { id: 'F', r: 4, c: 4, len: 2, dir: 'H', color: 'purple' },
+          { id: 'G', r: 5, c: 0, len: 3, dir: 'H', color: 'orange' }
+        ],
+        // #24
+        [
+          { id: 'T', r: 2, c: 1, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 3, dir: 'H', color: 'yellow' },
+          { id: 'B', r: 0, c: 4, len: 2, dir: 'V', color: 'lime' },
+          { id: 'C', r: 0, c: 5, len: 2, dir: 'V', color: 'pink' },
+          { id: 'D', r: 2, c: 3, len: 2, dir: 'V', color: 'amber' },
+          { id: 'E', r: 3, c: 0, len: 2, dir: 'V', color: 'silver' },
+          { id: 'F', r: 3, c: 2, len: 2, dir: 'V', color: 'blue' },
+          { id: 'G', r: 4, c: 1, len: 2, dir: 'H', color: 'purple' },
+          { id: 'H', r: 4, c: 3, len: 3, dir: 'H', color: 'orange' }
+        ],
+        // #25
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 3, dir: 'H', color: 'yellow' },
+          { id: 'B', r: 0, c: 3, len: 2, dir: 'V', color: 'lime' },
+          { id: 'C', r: 0, c: 4, len: 2, dir: 'V', color: 'amber' },
+          { id: 'D', r: 1, c: 2, len: 3, dir: 'V', color: 'orange' },
+          { id: 'E', r: 3, c: 3, len: 2, dir: 'H', color: 'silver' },
+          { id: 'F', r: 2, c: 5, len: 2, dir: 'V', color: 'blue' },
+          { id: 'G', r: 4, c: 5, len: 2, dir: 'V', color: 'coral' },
+          { id: 'H', r: 4, c: 0, len: 3, dir: 'H', color: 'gold' },
+          { id: 'I', r: 5, c: 1, len: 2, dir: 'H', color: 'teal' }
+        ],
+        // #26
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 2, dir: 'V', color: 'lime' },
+          { id: 'B', r: 0, c: 2, len: 2, dir: 'V', color: 'pink' },
+          { id: 'C', r: 0, c: 3, len: 2, dir: 'V', color: 'blue' },
+          { id: 'D', r: 0, c: 4, len: 2, dir: 'V', color: 'silver' },
+          { id: 'E', r: 2, c: 2, len: 2, dir: 'H', color: 'purple' },
+          { id: 'F', r: 3, c: 0, len: 3, dir: 'H', color: 'yellow' },
+          { id: 'G', r: 2, c: 4, len: 3, dir: 'V', color: 'amber' },
+          { id: 'H', r: 1, c: 5, len: 3, dir: 'V', color: 'orange' },
+          { id: 'I', r: 4, c: 1, len: 2, dir: 'V', color: 'teal' },
+          { id: 'J', r: 4, c: 2, len: 2, dir: 'H', color: 'cyan' }
+        ],
+        // #27
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 2, dir: 'V', color: 'lime' },
+          { id: 'B', r: 0, c: 2, len: 2, dir: 'V', color: 'pink' },
+          { id: 'C', r: 0, c: 3, len: 2, dir: 'V', color: 'yellow' },
+          { id: 'D', r: 0, c: 4, len: 2, dir: 'H', color: 'silver' },
+          { id: 'E', r: 2, c: 2, len: 3, dir: 'V', color: 'amber' },
+          { id: 'F', r: 2, c: 3, len: 3, dir: 'V', color: 'orange' },
+          { id: 'G', r: 1, c: 4, len: 3, dir: 'V', color: 'gold' },
+          { id: 'H', r: 2, c: 5, len: 2, dir: 'V', color: 'purple' },
+          { id: 'I', r: 4, c: 5, len: 2, dir: 'V', color: 'teal' },
+          { id: 'J', r: 5, c: 1, len: 2, dir: 'H', color: 'cyan' },
+          { id: 'K', r: 5, c: 3, len: 2, dir: 'H', color: 'coral' }
+        ],
+        // #28
+        [
+          { id: 'T', r: 2, c: 3, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 2, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'B', r: 0, c: 4, len: 2, dir: 'V', color: 'lime' },
+          { id: 'C', r: 1, c: 5, len: 3, dir: 'V', color: 'orange' },
+          { id: 'D', r: 3, c: 1, len: 2, dir: 'H', color: 'pink' },
+          { id: 'E', r: 3, c: 3, len: 3, dir: 'V', color: 'amber' },
+          { id: 'F', r: 4, c: 0, len: 2, dir: 'V', color: 'blue' },
+          { id: 'G', r: 4, c: 1, len: 2, dir: 'V', color: 'silver' },
+          { id: 'H', r: 4, c: 4, len: 2, dir: 'H', color: 'purple' }
+        ],
+        // #29
+        [
+          { id: 'T', r: 2, c: 1, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 2, dir: 'H', color: 'lime' },
+          { id: 'B', r: 0, c: 2, len: 2, dir: 'V', color: 'pink' },
+          { id: 'C', r: 0, c: 3, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'D', r: 4, c: 0, len: 2, dir: 'V', color: 'silver' },
+          { id: 'E', r: 4, c: 1, len: 2, dir: 'V', color: 'purple' },
+          { id: 'F', r: 4, c: 2, len: 2, dir: 'H', color: 'teal' },
+          { id: 'G', r: 3, c: 4, len: 2, dir: 'V', color: 'blue' },
+          { id: 'H', r: 3, c: 5, len: 2, dir: 'V', color: 'orange' },
+          { id: 'I', r: 5, c: 2, len: 3, dir: 'H', color: 'amber' }
+        ],
+        // #30
+        [
+          { id: 'T', r: 2, c: 2, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 3, c: 0, len: 2, dir: 'H', color: 'lime' },
+          { id: 'B', r: 4, c: 0, len: 2, dir: 'V', color: 'pink' },
+          { id: 'C', r: 3, c: 2, len: 3, dir: 'V', color: 'orange' },
+          { id: 'D', r: 2, c: 4, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'E', r: 5, c: 4, len: 2, dir: 'H', color: 'amber' }
+        ]
+      ],
+      superhard: [
+        // #31
+        [
+          { id: 'T', r: 2, c: 1, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 1, len: 2, dir: 'H', color: 'pink' },
+          { id: 'B', r: 1, c: 1, len: 2, dir: 'H', color: 'blue' },
+          { id: 'C', r: 0, c: 3, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'D', r: 3, c: 0, len: 2, dir: 'H', color: 'amber' },
+          { id: 'E', r: 4, c: 0, len: 2, dir: 'H', color: 'lime' },
+          { id: 'F', r: 4, c: 2, len: 2, dir: 'V', color: 'teal' },
+          { id: 'G', r: 3, c: 3, len: 2, dir: 'H', color: 'purple' },
+          { id: 'H', r: 3, c: 5, len: 3, dir: 'V', color: 'orange' }
+        ],
+        // #32
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 3, dir: 'H', color: 'yellow' },
+          { id: 'B', r: 0, c: 3, len: 2, dir: 'H', color: 'pink' },
+          { id: 'C', r: 0, c: 5, len: 2, dir: 'V', color: 'purple' },
+          { id: 'D', r: 1, c: 2, len: 3, dir: 'V', color: 'orange' },
+          { id: 'E', r: 2, c: 3, len: 3, dir: 'V', color: 'amber' },
+          { id: 'F', r: 4, c: 0, len: 2, dir: 'V', color: 'silver' },
+          { id: 'G', r: 4, c: 1, len: 2, dir: 'H', color: 'indigo' },
+          { id: 'H', r: 5, c: 1, len: 2, dir: 'H', color: 'cyan' },
+          { id: 'I', r: 3, c: 4, len: 2, dir: 'V', color: 'blue' },
+          { id: 'J', r: 4, c: 5, len: 2, dir: 'V', color: 'lime' }
+        ],
+        // #33
+        [
+          { id: 'T', r: 2, c: 2, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 2, len: 2, dir: 'V', color: 'lime' },
+          { id: 'B', r: 0, c: 4, len: 2, dir: 'H', color: 'pink' },
+          { id: 'C', r: 1, c: 4, len: 2, dir: 'V', color: 'blue' },
+          { id: 'D', r: 2, c: 1, len: 2, dir: 'V', color: 'silver' },
+          { id: 'E', r: 3, c: 4, len: 2, dir: 'H', color: 'purple' },
+          { id: 'F', r: 4, c: 0, len: 3, dir: 'H', color: 'yellow' },
+          { id: 'G', r: 4, c: 4, len: 2, dir: 'V', color: 'teal' },
+          { id: 'H', r: 4, c: 5, len: 2, dir: 'V', color: 'cyan' }
+        ],
+        // #34
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 2, dir: 'V', color: 'lime' },
+          { id: 'B', r: 0, c: 1, len: 3, dir: 'H', color: 'yellow' },
+          { id: 'C', r: 1, c: 1, len: 3, dir: 'H', color: 'orange' },
+          { id: 'D', r: 0, c: 4, len: 3, dir: 'V', color: 'amber' },
+          { id: 'E', r: 2, c: 2, len: 2, dir: 'V', color: 'pink' },
+          { id: 'F', r: 2, c: 3, len: 2, dir: 'V', color: 'blue' },
+          { id: 'G', r: 4, c: 3, len: 2, dir: 'V', color: 'silver' },
+          { id: 'H', r: 4, c: 4, len: 2, dir: 'H', color: 'teal' }
+        ],
+        // #35
+        [
+          { id: 'T', r: 2, c: 0, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 2, dir: 'V', color: 'lime' },
+          { id: 'B', r: 0, c: 1, len: 3, dir: 'H', color: 'yellow' },
+          { id: 'C', r: 0, c: 4, len: 2, dir: 'V', color: 'pink' },
+          { id: 'D', r: 2, c: 4, len: 2, dir: 'V', color: 'purple' },
+          { id: 'E', r: 1, c: 2, len: 2, dir: 'V', color: 'blue' },
+          { id: 'F', r: 1, c: 3, len: 2, dir: 'V', color: 'silver' },
+          { id: 'G', r: 3, c: 1, len: 2, dir: 'H', color: 'teal' },
+          { id: 'H', r: 3, c: 3, len: 2, dir: 'V', color: 'cyan' },
+          { id: 'I', r: 4, c: 4, len: 2, dir: 'H', color: 'amber' }
+        ],
+        // #36
+        [
+          { id: 'T', r: 2, c: 1, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 2, dir: 'H', color: 'yellow' },
+          { id: 'B', r: 1, c: 0, len: 3, dir: 'V', color: 'orange' },
+          { id: 'C', r: 0, c: 2, len: 2, dir: 'V', color: 'pink' },
+          { id: 'D', r: 0, c: 3, len: 3, dir: 'V', color: 'amber' },
+          { id: 'E', r: 3, c: 3, len: 3, dir: 'H', color: 'gold' },
+          { id: 'F', r: 4, c: 0, len: 2, dir: 'H', color: 'purple' },
+          { id: 'G', r: 4, c: 4, len: 2, dir: 'V', color: 'blue' },
+          { id: 'H', r: 4, c: 5, len: 2, dir: 'V', color: 'silver' }
+        ],
+        // #37
+        [
+          { id: 'T', r: 2, c: 1, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 3, dir: 'H', color: 'yellow' },
+          { id: 'B', r: 0, c: 3, len: 2, dir: 'H', color: 'lime' },
+          { id: 'C', r: 0, c: 5, len: 2, dir: 'V', color: 'pink' },
+          { id: 'D', r: 1, c: 3, len: 2, dir: 'H', color: 'silver' },
+          { id: 'E', r: 2, c: 0, len: 3, dir: 'V', color: 'amber' },
+          { id: 'F', r: 2, c: 3, len: 2, dir: 'V', color: 'blue' },
+          { id: 'G', r: 3, c: 1, len: 2, dir: 'V', color: 'purple' },
+          { id: 'H', r: 4, c: 2, len: 2, dir: 'H', color: 'cyan' },
+          { id: 'I', r: 4, c: 3, len: 2, dir: 'V', color: 'teal' },
+          { id: 'J', r: 2, c: 4, len: 3, dir: 'V', color: 'orange' },
+          { id: 'K', r: 2, c: 5, len: 3, dir: 'V', color: 'gold' },
+          { id: 'L', r: 5, c: 1, len: 3, dir: 'H', color: 'coral' }
+        ],
+        // #38
+        [
+          { id: 'T', r: 2, c: 1, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'B', r: 0, c: 3, len: 2, dir: 'V', color: 'lime' },
+          { id: 'C', r: 0, c: 4, len: 2, dir: 'H', color: 'amber' },
+          { id: 'D', r: 2, c: 3, len: 2, dir: 'V', color: 'blue' },
+          { id: 'E', r: 3, c: 0, len: 3, dir: 'H', color: 'orange' },
+          { id: 'F', r: 4, c: 2, len: 2, dir: 'V', color: 'silver' },
+          { id: 'G', r: 4, c: 3, len: 2, dir: 'H', color: 'purple' },
+          { id: 'H', r: 3, c: 5, len: 3, dir: 'V', color: 'gold' }
+        ],
+        // #39
+        [
+          { id: 'T', r: 2, c: 2, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 2, dir: 'H', color: 'lime' },
+          { id: 'B', r: 1, c: 0, len: 2, dir: 'V', color: 'pink' },
+          { id: 'C', r: 0, c: 3, len: 2, dir: 'V', color: 'purple' },
+          { id: 'D', r: 0, c: 4, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'E', r: 2, c: 5, len: 2, dir: 'V', color: 'indigo' },
+          { id: 'F', r: 3, c: 1, len: 2, dir: 'V', color: 'blue' },
+          { id: 'G', r: 3, c: 2, len: 2, dir: 'H', color: 'teal' },
+          { id: 'H', r: 4, c: 0, len: 2, dir: 'H', color: 'silver' },
+          { id: 'I', r: 4, c: 2, len: 2, dir: 'V', color: 'amber' },
+          { id: 'J', r: 4, c: 3, len: 3, dir: 'H', color: 'gold' }
+        ],
+        // #40
+        [
+          { id: 'T', r: 2, c: 1, len: 2, dir: 'H', color: 'red' },
+          { id: 'A', r: 0, c: 0, len: 2, dir: 'H', color: 'lime' },
+          { id: 'B', r: 1, c: 0, len: 2, dir: 'V', color: 'blue' },
+          { id: 'C', r: 0, c: 3, len: 3, dir: 'V', color: 'yellow' },
+          { id: 'D', r: 0, c: 5, len: 3, dir: 'V', color: 'amber' },
+          { id: 'E', r: 3, c: 0, len: 3, dir: 'V', color: 'orange' },
+          { id: 'F', r: 4, c: 1, len: 2, dir: 'H', color: 'teal' },
+          { id: 'G', r: 3, c: 3, len: 2, dir: 'V', color: 'purple' },
+          { id: 'H', r: 3, c: 4, len: 2, dir: 'V', color: 'silver' },
+          { id: 'I', r: 5, c: 3, len: 3, dir: 'H', color: 'gold' }
+        ]
+      ]
+    };
+
+    const TIER_META = {
+      easy: {
+        key: 'easy',
+        name: '쉬움',
+        engName: 'EASY',
+        rangeText: 'STAGE 1 ~ 10',
+        desc: '기본적인 차량 이동과 길 트기 연습',
+        badgeClass: 'bg-emerald-500 text-slate-950',
+        borderClass: 'border-emerald-500/50 hover:border-emerald-400',
+        cardBg: 'from-emerald-950/85 via-slate-900/90 to-slate-900/95',
+        btnClass: 'bg-emerald-500 hover:bg-emerald-400 text-slate-950',
+        barGradient: 'from-emerald-400 to-teal-300',
+        themeVars: {
+          '--bg-from': '#0f3d2e',
+          '--bg-via': '#06281e',
+          '--bg-to': '#03140f',
+          '--theme-accent': '#10b981',
+          '--theme-glow': 'rgba(16, 185, 129, 0.28)',
+          '--board-border': '#10b981'
+        }
+      },
+      medium: {
+        key: 'medium',
+        name: '보통',
+        engName: 'MEDIUM',
+        rangeText: 'STAGE 11 ~ 20',
+        desc: '트럭과 승용차가 본격적으로 얽히는 구간',
+        badgeClass: 'bg-amber-400 text-slate-950',
+        borderClass: 'border-amber-500/50 hover:border-amber-400',
+        cardBg: 'from-amber-950/85 via-slate-900/90 to-slate-900/95',
+        btnClass: 'bg-amber-400 hover:bg-amber-300 text-slate-950',
+        barGradient: 'from-amber-400 to-yellow-300',
+        themeVars: {
+          '--bg-from': '#3d280a',
+          '--bg-via': '#2b1c06',
+          '--bg-to': '#140d02',
+          '--theme-accent': '#f59e0b',
+          '--theme-glow': 'rgba(245, 158, 11, 0.28)',
+          '--board-border': '#f59e0b'
+        }
+      },
+      hard: {
+        key: 'hard',
+        name: '어려움',
+        engName: 'HARD',
+        rangeText: 'STAGE 21 ~ 30',
+        desc: '치밀한 공간 확보와 순서 설계가 필요한 구간',
+        badgeClass: 'bg-sky-400 text-slate-950',
+        borderClass: 'border-sky-500/50 hover:border-sky-400',
+        cardBg: 'from-sky-950/85 via-slate-900/90 to-slate-900/95',
+        btnClass: 'bg-sky-400 hover:bg-sky-300 text-slate-950',
+        barGradient: 'from-sky-400 to-indigo-400',
+        themeVars: {
+          '--bg-from': '#0f294d',
+          '--bg-via': '#081c38',
+          '--bg-to': '#040d1a',
+          '--theme-accent': '#3b82f6',
+          '--theme-glow': 'rgba(59, 130, 246, 0.30)',
+          '--board-border': '#3b82f6'
+        }
+      },
+      superhard: {
+        key: 'superhard',
+        name: '매우 어려움',
+        engName: 'SUPER HARD',
+        rangeText: 'STAGE 31 ~ 40',
+        desc: '꽉 막힌 주차장을 뚫어내는 최고 난이도 도전',
+        badgeClass: 'bg-rose-500 text-white',
+        borderClass: 'border-rose-500/50 hover:border-rose-400',
+        cardBg: 'from-rose-950/85 via-slate-900/90 to-slate-900/95',
+        btnClass: 'bg-rose-500 hover:bg-rose-400 text-white',
+        barGradient: 'from-rose-500 to-amber-400',
+        themeVars: {
+          '--bg-from': '#471024',
+          '--bg-via': '#330a18',
+          '--bg-to': '#17040b',
+          '--theme-accent': '#f43f5e',
+          '--theme-glow': 'rgba(244, 63, 94, 0.30)',
+          '--board-border': '#f43f5e'
+        }
+      }
+    };
+
+    const MAIN_THEME_VARS = {
+      '--bg-from': '#1e293b',
+      '--bg-via': '#0f172a',
+      '--bg-to': '#090d16',
+      '--theme-accent': '#ef4444',
+      '--theme-glow': 'rgba(239, 68, 68, 0.22)',
+      '--board-border': '#475569'
+    };
+
+    const VEHICLE_STYLES = {
+      red:    { label: '빨간 스포츠카 (탈출 차량)', bg: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', border: '#fecaca', roof: '#991b1b' },
+      yellow: { label: '노란색 차량', bg: 'linear-gradient(135deg, #facc15 0%, #ca8a04 100%)', border: '#fef08a', roof: '#854d0e' },
+      amber:  { label: '호박색 차량', bg: 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)', border: '#fde68a', roof: '#78350f' },
+      gold:   { label: '골드 차량',   bg: 'linear-gradient(135deg, #eab308 0%, #a16207 100%)', border: '#fef9c3', roof: '#713f12' },
+      orange: { label: '주황색 차량', bg: 'linear-gradient(135deg, #fb923c 0%, #ea580c 100%)', border: '#fed7aa', roof: '#9a3412' },
+      coral:  { label: '코랄색 차량', bg: 'linear-gradient(135deg, #f87171 0%, #c2410c 100%)', border: '#fecdd3', roof: '#7c2d12' },
+      lime:   { label: '연두색 차량', bg: 'linear-gradient(135deg, #a3e635 0%, #4d7c0f 100%)', border: '#d9f99d', roof: '#365314' },
+      teal:   { label: '청록색 차량', bg: 'linear-gradient(135deg, #2dd4bf 0%, #0f766e 100%)', border: '#99f6e4', roof: '#134e4a' },
+      pink:   { label: '분홍색 차량', bg: 'linear-gradient(135deg, #f472b6 0%, #db2777 100%)', border: '#fbcfe8', roof: '#9d174d' },
+      purple: { label: '보라색 차량', bg: 'linear-gradient(135deg, #c084fc 0%, #7e22ce 100%)', border: '#e9d5ff', roof: '#581c87' },
+      indigo: { label: '남색 차량',   bg: 'linear-gradient(135deg, #818cf8 0%, #4338ca 100%)', border: '#e0e7ff', roof: '#312e81' },
+      blue:   { label: '파란색 차량', bg: 'linear-gradient(135deg, #60a5fa 0%, #1d4ed8 100%)', border: '#bfdbfe', roof: '#1e3a8a' },
+      cyan:   { label: '하늘색 차량', bg: 'linear-gradient(135deg, #38bdf8 0%, #0369a1 100%)', border: '#bae6fd', roof: '#0c4a6e' },
+      silver: { label: '은색 차량',   bg: 'linear-gradient(135deg, #e2e8f0 0%, #64748b 100%)', border: '#f8fafc', roof: '#334155' }
+    };
+
+    const STORAGE_KEY = 'rush_hour_40_precise_v3';
+    let gameRecords = {
+      easy: {},
+      medium: {},
+      hard: {},
+      superhard: {}
+    };
+
+    let currentTierKey = 'easy';
+    let currentStageIdx = 0; // 0..9 (Sequential progression)
+    let vehicles = [];
+    let selectedVehicleId = 'T';
+    let moveHistory = [];
+    let moveCount = 0;
+    let elapsedSec = 0;
+    let timerInterval = null;
+    let isStageClearing = false;
+    let dragState = null;
+
+    function applyThemeVariables(varsObj) {
+      const root = document.documentElement;
+      Object.entries(varsObj).forEach(([k, v]) => {
+        root.style.setProperty(k, v);
+      });
+    }
+
+    function loadRecords() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          Object.keys(gameRecords).forEach(k => {
+            if (parsed[k]) gameRecords[k] = parsed[k];
+          });
+        }
+      } catch (e) {}
+    }
+
+    function saveRecords() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(gameRecords));
+      } catch (e) {}
+    }
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
+
+    function formatTimeKorean(sec) {
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return m > 0 ? `${m}분 ${s}초` : `${s}초`;
+    }
+
+    function renderMainMenu() {
+      applyThemeVariables(MAIN_THEME_VARS);
+      const container = document.getElementById('difficulty-cards-container');
+      container.innerHTML = '';
+
+      let totalCleared = 0;
+      Object.keys(TIER_META).forEach(tKey => {
+        for (let i = 0; i < 10; i++) {
+          if (gameRecords[tKey]?.[i]?.cleared) totalCleared++;
+        }
+      });
+      document.getElementById('total-cleared-count').textContent = totalCleared;
+
+      Object.values(TIER_META).forEach(tier => {
+        const tRec = gameRecords[tier.key] || {};
+        let clearedCount = 0;
+        let totalMoves = 0;
+        let totalTime = 0;
+        let nextStageIdx = 0;
+
+        for (let i = 0; i < 10; i++) {
+          if (tRec[i]?.cleared) {
+            clearedCount++;
+            totalMoves += tRec[i].moves;
+            totalTime += tRec[i].timeSec;
+            if (i + 1 < 10) nextStageIdx = i + 1;
+          } else {
+            nextStageIdx = i;
+            break;
+          }
+        }
+
+        const isAllCleared = clearedCount === 10;
+
+        const card = document.createElement('div');
+        card.className = `bg-gradient-to-br ${tier.cardBg} rounded-2xl p-4 sm:p-5 border-2 ${tier.borderClass} shadow-xl flex flex-col justify-between transition backdrop-blur-md`;
+
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase ${tier.badgeClass}">
+                ${tier.engName}
+              </span>
+              <span class="text-xs font-extrabold ${isAllCleared ? 'text-emerald-400' : 'text-slate-300'}">
+                ${clearedCount} / 10 완료
+              </span>
+            </div>
+            <div class="flex items-baseline justify-between">
+              <h2 class="font-title text-2xl sm:text-3xl text-white">${tier.name}</h2>
+              <span class="text-[11px] font-bold text-slate-400">${tier.rangeText}</span>
+            </div>
+            <p class="text-xs text-slate-300/80 mt-0.5 line-clamp-1">${tier.desc}</p>
+          </div>
+
+          <div class="my-2">
+            <div class="w-full h-2.5 bg-slate-950/90 rounded-full overflow-hidden border border-slate-700/80">
+              <div class="h-full bg-gradient-to-r ${tier.barGradient} transition-all duration-300" style="width: ${clearedCount * 10}%"></div>
+            </div>
+            <div class="flex justify-between items-center text-[11px] text-slate-300 mt-1.5 font-semibold">
+              <span>${isAllCleared ? '🎉 10개 스테이지 완주!' : `현재 진행: ${nextStageIdx + 1}번째 스테이지`}</span>
+              <span>${clearedCount > 0 ? `누적 ${totalMoves}회 · ${formatTime(totalTime)}` : '기록 없음'}</span>
+            </div>
+          </div>
+
+          <div class="flex gap-2">
+            <button onclick="startDifficulty('${tier.key}')" class="flex-1 py-2.5 sm:py-3 rounded-xl font-extrabold text-xs sm:text-sm shadow-md transition active:scale-95 ${tier.btnClass}">
+              ${isAllCleared ? '1단계부터 다시 시작 ▶' : (clearedCount > 0 ? `${nextStageIdx + 1}단계 이어하기 ▶` : '1단계 시작하기 ▶')}
+            </button>
+            ${
+              isAllCleared
+                ? `<button onclick="showTierFinalSummary('${tier.key}')" class="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-extrabold text-xs border border-slate-600 transition">🏆 결과</button>`
+                : ''
+            }
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function showScreen(screenId) {
+      ['screen-main', 'screen-game', 'screen-summary'].forEach(id => {
+        const el = document.getElementById(id);
+        if (id === screenId) el.classList.remove('hidden');
+        else el.classList.add('hidden');
+      });
+    }
+
+    function startDifficulty(tierKey) {
+      currentTierKey = tierKey;
+      const tier = TIER_META[tierKey];
+      applyThemeVariables(tier.themeVars);
+
+      const tRec = gameRecords[tierKey] || {};
+      let firstUncleared = -1;
+      for (let i = 0; i < 10; i++) {
+        if (!tRec[i]?.cleared) {
+          firstUncleared = i;
+          break;
+        }
+      }
+
+      if (firstUncleared === -1) {
+        gameRecords[tierKey] = {};
+        saveRecords();
+        currentStageIdx = 0;
+      } else {
+        currentStageIdx = firstUncleared;
+      }
+
+      showScreen('screen-game');
+      loadStage(currentTierKey, currentStageIdx);
+    }
+
+    function restartTierFromStageOne() {
+      gameRecords[currentTierKey] = {};
+      saveRecords();
+      currentStageIdx = 0;
+      applyThemeVariables(TIER_META[currentTierKey].themeVars);
+      showScreen('screen-game');
+      loadStage(currentTierKey, 0);
+    }
+
+    function returnToMainMenu() {
+      stopTimer();
+      closeStageClearModal();
+      renderMainMenu();
+      showScreen('screen-main');
+    }
+
+    function buildBoardCellsOnce() {
+      const container = document.getElementById('grid-cells-container');
+      container.innerHTML = '';
+      for (let r = 0; r < 6; r++) {
+        for (let c = 0; c < 6; c++) {
+          const cell = document.createElement('div');
+          cell.className = 'grid-cell';
+          cell.dataset.r = r;
+          cell.dataset.c = c;
+          cell.addEventListener('pointerdown', () => onEmptyCellTap(r, c));
+          container.appendChild(cell);
+        }
+      }
+    }
+
+    function loadStage(tierKey, stageIdx) {
+      stopTimer();
+      isStageClearing = false;
+      currentTierKey = tierKey;
+      currentStageIdx = stageIdx;
+
+      const tier = TIER_META[tierKey];
+      applyThemeVariables(tier.themeVars);
+
+      const stageVehicles = STAGE_DATA[tierKey][stageIdx];
+      vehicles = stageVehicles.map(v => ({ ...v }));
+      selectedVehicleId = 'T';
+      moveHistory = [];
+      moveCount = 0;
+      elapsedSec = 0;
+
+      const badge = document.getElementById('game-tier-badge');
+      badge.className = `px-3 py-1 rounded-full text-xs font-extrabold uppercase shadow-sm ${tier.badgeClass}`;
+      badge.textContent = `${tier.name} (${tier.engName})`;
+      document.getElementById('game-stage-num').textContent = stageIdx + 1;
+
+      updateStatsUI();
+      renderSequentialStagePills();
+      renderBoardVehicles(true);
+      updateSelectedCarHint();
+      startTimer();
+    }
+
+    function renderSequentialStagePills() {
+      const bar = document.getElementById('stage-progress-pills');
+      const tRec = gameRecords[currentTierKey] || {};
+      bar.innerHTML = '';
+
+      for (let i = 0; i < 10; i++) {
+        const isCurrent = i === currentStageIdx;
+        const isCleared = Boolean(tRec[i]?.cleared);
+
+        const pill = document.createElement('div');
+        pill.className = `flex-1 h-6 rounded-md text-[11px] font-extrabold flex items-center justify-center border transition ${
+          isCurrent
+            ? 'bg-amber-400 text-slate-950 border-amber-300 shadow'
+            : isCleared
+              ? 'bg-emerald-500/30 text-emerald-300 border-emerald-500/40'
+              : 'bg-slate-950/70 text-slate-500 border-slate-800'
+        }`;
+        pill.textContent = i + 1;
+        bar.appendChild(pill);
+      }
+    }
+
+    function startTimer() {
+      stopTimer();
+      timerInterval = setInterval(() => {
+        if (!isStageClearing) {
+          elapsedSec++;
+          document.getElementById('stat-time').textContent = formatTime(elapsedSec);
+        }
+      }, 1000);
+    }
+
+    function stopTimer() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+    }
+
+    function updateStatsUI() {
+      document.getElementById('stat-moves').textContent = `${moveCount}회`;
+      document.getElementById('stat-time').textContent = formatTime(elapsedSec);
+      document.getElementById('btn-undo').disabled = moveHistory.length === 0 || isStageClearing;
+    }
+
+    function updateSelectedCarHint() {
+      const v = vehicles.find(item => item.id === selectedVehicleId);
+      const infoEl = document.getElementById('selected-car-info');
+      if (!v) return;
+      const styleInfo = VEHICLE_STYLES[v.color] || VEHICLE_STYLES.silver;
+      const dirText = v.dir === 'H' ? '좌·우(◀/▶) 이동 가능' : '상·하(▲/▼) 이동 가능';
+      infoEl.textContent = `${styleInfo.label} 선택됨 · ${dirText}`;
+    }
+
+    function renderBoardVehicles(fullRebuild = false) {
+      const layer = document.getElementById('vehicles-layer');
+
+      if (fullRebuild) {
+        layer.innerHTML = '';
+        vehicles.forEach(v => {
+          const el = document.createElement('div');
+          el.id = `veh-${v.id}`;
+          el.dataset.id = v.id;
+          el.className = `vehicle ${v.id === selectedVehicleId ? 'selected' : ''}`;
+          el.style.width = v.dir === 'H' ? `${(v.len / 6) * 100}%` : `${(1 / 6) * 100}%`;
+          el.style.height = v.dir === 'V' ? `${(v.len / 6) * 100}%` : `${(1 / 6) * 100}%`;
+          el.style.left = `${(v.c / 6) * 100}%`;
+          el.style.top = `${(v.r / 6) * 100}%`;
+
+          const styleInfo = VEHICLE_STYLES[v.color] || VEHICLE_STYLES.silver;
+          const isTarget = v.id === 'T';
+
+          let bodyContent = '';
+          if (isTarget) {
+            bodyContent = `
+              <div class="w-full h-full flex items-center justify-between px-2 py-1.5 relative">
+                <div class="w-1.5 h-3/4 rounded-full bg-red-950/60"></div>
+                <div class="w-3/5 h-3/4 rounded-md border border-red-200/50 shadow-inner flex items-center justify-between px-1.5" style="background: ${styleInfo.roof};">
+                  <div class="w-1.5 h-4/5 rounded-sm bg-slate-950/65"></div>
+                  <span class="text-[10px] font-black text-red-100 tracking-widest select-none">GT</span>
+                  <div class="w-2 h-4/5 rounded-sm bg-sky-200/85"></div>
+                </div>
+                <div class="flex flex-col justify-between h-3/4">
+                  <span class="w-1.5 h-2 rounded-full bg-amber-200 shadow"></span>
+                  <span class="w-1.5 h-2 rounded-full bg-amber-200 shadow"></span>
+                </div>
+              </div>
+            `;
+          } else if (v.dir === 'H') {
+            bodyContent = `
+              <div class="w-full h-full flex items-center justify-center p-1.5">
+                <div class="w-3/5 h-3/4 rounded-md border border-white/30 shadow-inner flex items-center justify-between px-1.5" style="background: ${styleInfo.roof}; opacity: 0.88;">
+                  <div class="w-1.5 h-4/5 bg-slate-950/50 rounded-sm"></div>
+                  <div class="w-1.5 h-4/5 bg-slate-950/50 rounded-sm"></div>
+                </div>
+              </div>
+            `;
+          } else {
+            bodyContent = `
+              <div class="w-full h-full flex items-center justify-center p-1.5">
+                <div class="w-3/4 h-3/5 rounded-md border border-white/30 shadow-inner flex flex-col items-center justify-between py-1.5" style="background: ${styleInfo.roof}; opacity: 0.88;">
+                  <div class="w-4/5 h-1.5 bg-slate-950/50 rounded-sm"></div>
+                  <div class="w-4/5 h-1.5 bg-slate-950/50 rounded-sm"></div>
+                </div>
+              </div>
+            `;
+          }
+
+          el.innerHTML = `
+            <div class="vehicle-body" style="background: ${styleInfo.bg}; border: 2px solid ${styleInfo.border};">
+              ${bodyContent}
+            </div>
+          `;
+
+          el.addEventListener('pointerdown', (e) => onVehiclePointerDown(e, v.id));
+          layer.appendChild(el);
+        });
+      } else {
+        vehicles.forEach(v => {
+          const el = document.getElementById(`veh-${v.id}`);
+          if (!el) return;
+          el.style.left = `${(v.c / 6) * 100}%`;
+          el.style.top = `${(v.r / 6) * 100}%`;
+          if (v.id === selectedVehicleId) el.classList.add('selected');
+          else el.classList.remove('selected');
+        });
+      }
+    }
+
+    function buildOccupancyGrid(excludeId = null) {
+      const grid = Array.from({ length: 6 }, () => Array(6).fill(null));
+      vehicles.forEach(v => {
+        if (v.id === excludeId) return;
+        for (let i = 0; i < v.len; i++) {
+          const r = v.dir === 'V' ? v.r + i : v.r;
+          const c = v.dir === 'H' ? v.c + i : v.c;
+          if (r >= 0 && r < 6 && c >= 0 && c < 6) {
+            grid[r][c] = v.id;
+          }
+        }
+      });
+      return grid;
+    }
+
+    function getAllowedRange(vehicle) {
+      const grid = buildOccupancyGrid(vehicle.id);
+      let minPos = vehicle.dir === 'H' ? vehicle.c : vehicle.r;
+      let maxPos = minPos;
+
+      while (minPos > 0) {
+        const testPos = minPos - 1;
+        const r = vehicle.dir === 'V' ? testPos : vehicle.r;
+        const c = vehicle.dir === 'H' ? testPos : vehicle.c;
+        if (grid[r][c] === null) minPos = testPos;
+        else break;
+      }
+
+      while (maxPos + vehicle.len < 6) {
+        const testCell = maxPos + vehicle.len;
+        const r = vehicle.dir === 'V' ? testCell : vehicle.r;
+        const c = vehicle.dir === 'H' ? testCell : vehicle.c;
+        if (grid[r][c] === null) maxPos++;
+        else break;
+      }
+
+      return { minPos, maxPos };
+    }
+
+    function selectVehicle(id) {
+      if (isStageClearing) return;
+      selectedVehicleId = id;
+      renderBoardVehicles(false);
+      updateSelectedCarHint();
+    }
+
+    function stepSelectedVehicle(dr, dc) {
+      if (isStageClearing) return;
+      const v = vehicles.find(item => item.id === selectedVehicleId);
+      if (!v) return;
+
+      if (v.dir === 'H' && dr !== 0) return;
+      if (v.dir === 'V' && dc !== 0) return;
+
+      const { minPos, maxPos } = getAllowedRange(v);
+      const curPos = v.dir === 'H' ? v.c : v.r;
+      const targetPos = curPos + (v.dir === 'H' ? dc : dr);
+
+      if (targetPos < minPos || targetPos > maxPos) return;
+      commitVehicleMove(v, targetPos - curPos);
+    }
+
+    function onEmptyCellTap(r, c) {
+      if (isStageClearing) return;
+      const v = vehicles.find(item => item.id === selectedVehicleId);
+      if (!v) return;
+
+      const { minPos, maxPos } = getAllowedRange(v);
+      if (v.dir === 'H' && v.r === r) {
+        let targetC = v.c;
+        if (c < v.c) targetC = Math.max(minPos, c);
+        else if (c >= v.c + v.len) targetC = Math.min(maxPos, c - v.len + 1);
+        if (targetC !== v.c) commitVehicleMove(v, targetC - v.c);
+      } else if (v.dir === 'V' && v.c === c) {
+        let targetR = v.r;
+        if (r < v.r) targetR = Math.max(minPos, r);
+        else if (r >= v.r + v.len) targetR = Math.min(maxPos, r - v.len + 1);
+        if (targetR !== v.r) commitVehicleMove(v, targetR - v.r);
+      }
+    }
+
+    function commitVehicleMove(v, deltaCells) {
+      if (deltaCells === 0) return;
+      const steps = Math.abs(deltaCells);
+      const sign = Math.sign(deltaCells);
+
+      moveHistory.push({
+        id: v.id,
+        prevR: v.r,
+        prevC: v.c
+      });
+
+      if (v.dir === 'H') v.c += sign * steps;
+      else v.r += sign * steps;
+
+      moveCount += 1;
+      updateStatsUI();
+      renderBoardVehicles(false);
+      checkWinCondition();
+    }
+
+    function undoMove() {
+      if (isStageClearing || moveHistory.length === 0) return;
+      const last = moveHistory.pop();
+      const v = vehicles.find(item => item.id === last.id);
+      if (v) {
+        v.r = last.prevR;
+        v.c = last.prevC;
+        moveCount = Math.max(0, moveCount - 1);
+        selectedVehicleId = v.id;
+      }
+      updateStatsUI();
+      renderBoardVehicles(false);
+      updateSelectedCarHint();
+    }
+
+    function resetCurrentStage() {
+      if (isStageClearing) return;
+      loadStage(currentTierKey, currentStageIdx);
+    }
+
+    // Touch / Mouse Drag & Swipe Handlers
+    function onVehiclePointerDown(e, vehicleId) {
+      if (isStageClearing) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      selectVehicle(vehicleId);
+      const v = vehicles.find(item => item.id === vehicleId);
+      if (!v) return;
+
+      const boardEl = document.getElementById('vehicles-layer');
+      const rect = boardEl.getBoundingClientRect();
+      const cellSize = rect.width / 6;
+      const { minPos, maxPos } = getAllowedRange(v);
+      const startPos = v.dir === 'H' ? v.c : v.r;
+
+      const el = document.getElementById(`veh-${v.id}`);
+      if (el) el.classList.add('dragging');
+
+      dragState = {
+        vehicle: v,
+        el,
+        startX: e.clientX,
+        startY: e.clientY,
+        cellSize,
+        minPos,
+        maxPos,
+        startPos,
+        currentFloatPos: startPos
+      };
+
+      window.addEventListener('pointermove', onWindowPointerMove, { passive: false });
+      window.addEventListener('pointerup', onWindowPointerUp);
+      window.addEventListener('pointercancel', onWindowPointerUp);
+    }
+
+    function onWindowPointerMove(e) {
+      if (!dragState) return;
+      e.preventDefault();
+
+      const { vehicle, el, startX, startY, cellSize, minPos, maxPos, startPos } = dragState;
+      const deltaPx = vehicle.dir === 'H' ? (e.clientX - startX) : (e.clientY - startY);
+      const deltaCells = deltaPx / cellSize;
+
+      const clampedPos = Math.max(minPos, Math.min(maxPos, startPos + deltaCells));
+      dragState.currentFloatPos = clampedPos;
+
+      if (el) {
+        if (vehicle.dir === 'H') el.style.left = `${(clampedPos / 6) * 100}%`;
+        else el.style.top = `${(clampedPos / 6) * 100}%`;
+      }
+    }
+
+    function onWindowPointerUp(e) {
+      if (!dragState) return;
+      const { vehicle, el, startX, startY, startPos, currentFloatPos, minPos, maxPos } = dragState;
+
+      if (el) el.classList.remove('dragging');
+
+      window.removeEventListener('pointermove', onWindowPointerMove);
+      window.removeEventListener('pointerup', onWindowPointerUp);
+      window.removeEventListener('pointercancel', onWindowPointerUp);
+
+      let finalCellPos = Math.round(currentFloatPos);
+
+      // Quick swipe recognition
+      if (finalCellPos === startPos && e) {
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const swipeThreshold = 16;
+        if (vehicle.dir === 'H' && Math.abs(dx) > swipeThreshold && Math.abs(dx) > Math.abs(dy)) {
+          finalCellPos = Math.max(minPos, Math.min(maxPos, startPos + Math.sign(dx)));
+        } else if (vehicle.dir === 'V' && Math.abs(dy) > swipeThreshold && Math.abs(dy) > Math.abs(dx)) {
+          finalCellPos = Math.max(minPos, Math.min(maxPos, startPos + Math.sign(dy)));
+        }
+      }
+
+      dragState = null;
+
+      const deltaCells = finalCellPos - startPos;
+      if (deltaCells !== 0) {
+        commitVehicleMove(vehicle, deltaCells);
+      } else {
+        renderBoardVehicles(false);
+      }
+    }
+
+    // Keyboard Arrow Keys & WASD Support
+    window.addEventListener('keydown', (e) => {
+      const gameScreen = document.getElementById('screen-game');
+      if (gameScreen.classList.contains('hidden')) return;
+
+      if (!document.getElementById('modal-stage-clear').classList.contains('hidden')) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          proceedAfterStageClear();
+        }
+        return;
+      }
+
+      if (isStageClearing) return;
+
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        stepSelectedVehicle(0, -1);
+      } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        e.preventDefault();
+        stepSelectedVehicle(0, 1);
+      } else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        e.preventDefault();
+        stepSelectedVehicle(-1, 0);
+      } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        stepSelectedVehicle(1, 0);
+      } else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        undoMove();
+      }
+    });
+
+    function checkWinCondition() {
+      const target = vehicles.find(v => v.id === 'T');
+      if (!target) return;
+
+      // Red Hero Car reaches column 4 (occupying cols 4 & 5 at row 2)
+      if (target.c === 4) {
+        isStageClearing = true;
+        stopTimer();
+
+        if (!gameRecords[currentTierKey]) gameRecords[currentTierKey] = {};
+        gameRecords[currentTierKey][currentStageIdx] = {
+          cleared: true,
+          moves: moveCount,
+          timeSec: elapsedSec
+        };
+        saveRecords();
+        renderSequentialStagePills();
+
+        const el = document.getElementById('veh-T');
+        if (el) {
+          el.classList.add('exiting');
+          requestAnimationFrame(() => {
+            el.style.left = '106%';
+          });
+        }
+
+        setTimeout(() => {
+          if (currentStageIdx < 9) {
+            openStageClearModal();
+          } else {
+            // Stage 10 cleared -> Show Difficulty Final Summary Screen
+            showTierFinalSummary(currentTierKey);
+          }
+        }, 560);
+      }
+    }
+
+    function openStageClearModal() {
+      const tier = TIER_META[currentTierKey];
+      const stageNum = currentStageIdx + 1;
+
+      document.getElementById('clear-modal-badge').textContent = `${tier.name} STAGE ${stageNum} CLEAR!`;
+      document.getElementById('clear-modal-moves').textContent = `${moveCount}회`;
+      document.getElementById('clear-modal-time').textContent = formatTime(elapsedSec);
+      document.getElementById('btn-next-stage').textContent = `다음 스테이지 (${stageNum + 1} / 10) ▶`;
+
+      const modal = document.getElementById('modal-stage-clear');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeStageClearModal() {
+      const modal = document.getElementById('modal-stage-clear');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function replayStageFromModal() {
+      closeStageClearModal();
+      loadStage(currentTierKey, currentStageIdx);
+    }
+
+    function proceedAfterStageClear() {
+      closeStageClearModal();
+      if (currentStageIdx < 9) {
+        loadStage(currentTierKey, currentStageIdx + 1);
+      } else {
+        showTierFinalSummary(currentTierKey);
+      }
+    }
+
+    function showTierFinalSummary(tierKey) {
+      stopTimer();
+      currentTierKey = tierKey;
+      const tier = TIER_META[tierKey];
+      applyThemeVariables(tier.themeVars);
+      const tRec = gameRecords[tierKey] || {};
+
+      let totalMoves = 0;
+      let totalTimeSec = 0;
+
+      const grid = document.getElementById('summary-stages-grid');
+      grid.innerHTML = '';
+
+      for (let i = 0; i < 10; i++) {
+        const rec = tRec[i];
+        const m = rec?.moves ?? 0;
+        const t = rec?.timeSec ?? 0;
+        totalMoves += m;
+        totalTimeSec += t;
+
+        const item = document.createElement('div');
+        item.className = 'bg-slate-900/90 border border-slate-700/80 rounded-xl px-3 py-2 flex items-center justify-between text-xs';
+        item.innerHTML = `
+          <span class="font-extrabold text-slate-300">${i + 1}단계</span>
+          <div class="flex items-center gap-2.5">
+            <span class="font-extrabold text-amber-400">${m}회</span>
+            <span class="font-mono font-bold text-sky-400">${formatTime(t)}</span>
+          </div>
+        `;
+        grid.appendChild(item);
+      }
+
+      const badge = document.getElementById('summary-tier-badge');
+      badge.className = `px-3.5 py-1 rounded-full text-xs font-extrabold uppercase shadow-sm ${tier.badgeClass}`;
+      badge.textContent = `${tier.name} (${tier.engName}) FINAL REPORT`;
+
+      document.getElementById('summary-title').textContent = `${tier.name} 단계 10개 스테이지 완주! 🏆`;
+      document.getElementById('summary-total-moves').textContent = `${totalMoves}회`;
+      document.getElementById('summary-total-time').textContent = formatTimeKorean(totalTimeSec);
+
+      showScreen('screen-summary');
+    }
+
+    function openResetConfirmModal() {
+      const modal = document.getElementById('modal-reset-confirm');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeResetConfirmModal() {
+      const modal = document.getElementById('modal-reset-confirm');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function confirmResetAllRecords() {
+      gameRecords = { easy: {}, medium: {}, hard: {}, superhard: {} };
+      saveRecords();
+      closeResetConfirmModal();
+      renderMainMenu();
+    }
+
+    window.onload = function () {
+      loadRecords();
+      buildBoardCellsOnce();
+      renderMainMenu();
+    };
+  </script>
+</body>
+</html>
