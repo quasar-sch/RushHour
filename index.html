@@ -417,19 +417,6 @@
   </div>
 
   <script>
-    /*************************************************************************
-     * [사용자 편집 영역] 4개 난이도 × 10개 스테이지 자동차 배치 데이터 (STAGE_DATA)
-     * -----------------------------------------------------------------------
-     * - 보드 크기: 6행(r: 0 ~ 5) × 6열(c: 0 ~ 5) (왼쪽 위가 r:0, c:0)
-     * - 탈출 차량: id가 'T'인 빨간 스포츠카 (항상 r: 2, dir: 'H', len: 2)
-     * - 일반 차량 속성:
-     *   id   : 차량 고유 이름 ('A', 'B', 'C' 등)
-     *   r    : 시작 행 번호 (0 ~ 5)
-     *   c    : 시작 열 번호 (0 ~ 5)
-     *   len  : 차량 길이 (2 = 승용차, 3 = 트럭/버스)
-     *   dir  : 이동 방향 ('H' = 가로 이동, 'V' = 세로 이동)
-     *   color: 차량 색상 ('red', 'yellow', 'amber', 'gold', 'orange', 'coral', 'lime', 'teal', 'pink', 'purple', 'indigo', 'blue', 'cyan', 'silver')
-     *************************************************************************/
     const STAGE_DATA = {
       easy: [
         // #1
@@ -990,15 +977,9 @@
     };
 
     const STORAGE_KEY = 'rush_hour_40_precise_v3';
-    let gameRecords = {
-      easy: {},
-      medium: {},
-      hard: {},
-      superhard: {}
-    };
-
+    let gameRecords = { easy: {}, medium: {}, hard: {}, superhard: {} };
     let currentTierKey = 'easy';
-    let currentStageIdx = 0; // 0..9 (Sequential progression)
+    let currentStageIdx = 0; 
     let vehicles = [];
     let selectedVehicleId = 'T';
     let moveHistory = [];
@@ -1007,6 +988,10 @@
     let timerInterval = null;
     let isStageClearing = false;
     let dragState = null;
+
+    // --- 추가된 관리자 모드 상태 ---
+    let backtickPressed = false;
+    let isAutoClearing = false;
 
     function applyThemeVariables(varsObj) {
       const root = document.documentElement;
@@ -1078,9 +1063,8 @@
         }
 
         const isAllCleared = clearedCount === 10;
-
         const card = document.createElement('div');
-        card.className = `bg-gradient-to-br ${tier.cardBg} rounded-2xl p-4 sm:p-5 border-2 ${tier.borderClass} shadow-xl flex flex-col justify-between transition backdrop-blur-md`;
+        card.className = `bg-gradient-to-br ${tier.cardBg} rounded-2xl p-4 sm:p-5 border-2${tier.borderClass} shadow-xl flex flex-col justify-between transition backdrop-blur-md`;
 
         card.innerHTML = `
           <div>
@@ -1169,6 +1153,7 @@
 
     function returnToMainMenu() {
       stopTimer();
+      isAutoClearing = false;
       closeStageClearModal();
       renderMainMenu();
       showScreen('screen-main');
@@ -1192,6 +1177,7 @@
     function loadStage(tierKey, stageIdx) {
       stopTimer();
       isStageClearing = false;
+      isAutoClearing = false;
       currentTierKey = tierKey;
       currentStageIdx = stageIdx;
 
@@ -1326,7 +1312,7 @@
           }
 
           el.innerHTML = `
-            <div class="vehicle-body" style="background: ${styleInfo.bg}; border: 2px solid ${styleInfo.border};">
+            <div class="vehicle-body" style="background: ${styleInfo.bg}; border: 2px solid${styleInfo.border};">
               ${bodyContent}
             </div>
           `;
@@ -1410,6 +1396,7 @@
 
     function onEmptyCellTap(r, c) {
       if (isStageClearing) return;
+      isAutoClearing = false;
       const v = vehicles.find(item => item.id === selectedVehicleId);
       if (!v) return;
 
@@ -1449,6 +1436,7 @@
 
     function undoMove() {
       if (isStageClearing || moveHistory.length === 0) return;
+      isAutoClearing = false;
       const last = moveHistory.pop();
       const v = vehicles.find(item => item.id === last.id);
       if (v) {
@@ -1464,12 +1452,13 @@
 
     function resetCurrentStage() {
       if (isStageClearing) return;
+      isAutoClearing = false;
       loadStage(currentTierKey, currentStageIdx);
     }
 
-    // Touch / Mouse Drag & Swipe Handlers
     function onVehiclePointerDown(e, vehicleId) {
       if (isStageClearing) return;
+      isAutoClearing = false;
       e.preventDefault();
       e.stopPropagation();
 
@@ -1532,7 +1521,6 @@
 
       let finalCellPos = Math.round(currentFloatPos);
 
-      // Quick swipe recognition
       if (finalCellPos === startPos && e) {
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
@@ -1545,7 +1533,6 @@
       }
 
       dragState = null;
-
       const deltaCells = finalCellPos - startPos;
       if (deltaCells !== 0) {
         commitVehicleMove(vehicle, deltaCells);
@@ -1554,10 +1541,128 @@
       }
     }
 
-    // Keyboard Arrow Keys & WASD Support
+    // ==========================================
+    // 추가된 관리자 모드: 자동 클리어 알고리즘 (BFS 탐색)
+    // ==========================================
+    function solveRushHour1Step(initialVehicles) {
+      const getStateStr = (st) => st.map(v => `${v.r},${v.c}`).join('|');
+      const queue = [{ state: initialVehicles.map(v => ({ ...v })), path: [] }];
+      const visited = new Set();
+      visited.add(getStateStr(queue[0].state));
+
+      let head = 0;
+      while (head < queue.length) {
+        const { state, path } = queue[head++];
+        const target = state.find(v => v.id === 'T');
+        if (target.c === 4) return path; // 빨간차가 출구 도착하면 완료
+
+        // 현재 그리드 상태 계산
+        const grid = Array(6).fill(0).map(() => Array(6).fill(null));
+        state.forEach(v => {
+          for (let i = 0; i < v.len; i++) {
+            grid[v.r + (v.dir === 'V' ? i : 0)][v.c + (v.dir === 'H' ? i : 0)] = v.id;
+          }
+        });
+
+        // 각 차량에 대해 -1, 1 방향으로 1칸 이동 시도
+        for (let i = 0; i < state.length; i++) {
+          const v = state[i];
+          for (let dir of [-1, 1]) {
+            let newR = v.r + (v.dir === 'V' ? dir : 0);
+            let newC = v.c + (v.dir === 'H' ? dir : 0);
+
+            // 맵 이탈 체크
+            if (newR < 0 || newC < 0 || (v.dir === 'V' && newR + v.len > 6) || (v.dir === 'H' && newC + v.len > 6)) continue;
+
+            // 이동 방향 충돌 체크 (앞/뒤 머리부분만 검사하면 됨)
+            let cellToCheckR = dir === 1 ? newR + (v.dir === 'V' ? v.len - 1 : 0) : newR;
+            let cellToCheckC = dir === 1 ? newC + (v.dir === 'H' ? v.len - 1 : 0) : newC;
+            if (grid[cellToCheckR][cellToCheckC] !== null && grid[cellToCheckR][cellToCheckC] !== v.id) continue;
+
+            // 새 상태 큐에 삽입
+            const newState = state.map(obj => ({ ...obj }));
+            newState[i].r = newR;
+            newState[i].c = newC;
+            const sStr = getStateStr(newState);
+            if (!visited.has(sStr)) {
+              visited.add(sStr);
+              queue.push({ state: newState, path: [...path, { id: v.id, dr: v.dir === 'V' ? dir : 0, dc: v.dir === 'H' ? dir : 0 }] });
+            }
+          }
+        }
+      }
+      return null;
+    }
+
+    async function triggerAutoClear() {
+      if (isAutoClearing || isStageClearing) return;
+      const path = solveRushHour1Step(vehicles);
+      if (!path) return; // 답이 없을 경우 무시
+
+      isAutoClearing = true;
+      for (let i = 0; i < path.length; i++) {
+        if (!isAutoClearing || isStageClearing) break;
+        const move = path[i];
+        selectVehicle(move.id);
+        stepSelectedVehicle(move.dr, move.dc);
+
+        // 시각적으로 이동 과정을 보여주기 위한 딜레이 (0.18초)
+        await new Promise(r => setTimeout(r, 180));
+      }
+      isAutoClearing = false;
+    }
+
+    function navigateStage(dir) {
+      isAutoClearing = false;
+      const tierKeys = ['easy', 'medium', 'hard', 'superhard'];
+      let currentTierIndex = tierKeys.indexOf(currentTierKey);
+      let newIdx = currentStageIdx + dir;
+
+      if (newIdx < 0) {
+        if (currentTierIndex > 0) {
+          currentTierKey = tierKeys[currentTierIndex - 1];
+          newIdx = 9;
+        } else {
+          newIdx = 0;
+        }
+      } else if (newIdx > 9) {
+        if (currentTierIndex < tierKeys.length - 1) {
+          currentTierKey = tierKeys[currentTierIndex + 1];
+          newIdx = 0;
+        } else {
+          newIdx = 9;
+        }
+      }
+      loadStage(currentTierKey, newIdx);
+    }
+
+    // ==========================================
+    // 키보드 이벤트 리스너 통합 관리
+    // ==========================================
     window.addEventListener('keydown', (e) => {
+      if (e.key === '`') backtickPressed = true;
+
       const gameScreen = document.getElementById('screen-game');
       if (gameScreen.classList.contains('hidden')) return;
+
+      // ` 키 조합 (자동 클리어, 전/후 스테이지 이동)
+      if (backtickPressed) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          triggerAutoClear();
+          return;
+        }
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          navigateStage(-1);
+          return;
+        }
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          navigateStage(1);
+          return;
+        }
+      }
 
       if (!document.getElementById('modal-stage-clear').classList.contains('hidden')) {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -1569,17 +1674,22 @@
 
       if (isStageClearing) return;
 
+      // 일반 이동키 입력시 오토클리어 중단
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
         e.preventDefault();
+        isAutoClearing = false;
         stepSelectedVehicle(0, -1);
       } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
         e.preventDefault();
+        isAutoClearing = false;
         stepSelectedVehicle(0, 1);
       } else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
         e.preventDefault();
+        isAutoClearing = false;
         stepSelectedVehicle(-1, 0);
       } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
         e.preventDefault();
+        isAutoClearing = false;
         stepSelectedVehicle(1, 0);
       } else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
@@ -1587,11 +1697,14 @@
       }
     });
 
+    window.addEventListener('keyup', (e) => {
+      if (e.key === '`') backtickPressed = false;
+    });
+
     function checkWinCondition() {
       const target = vehicles.find(v => v.id === 'T');
       if (!target) return;
 
-      // Red Hero Car reaches column 4 (occupying cols 4 & 5 at row 2)
       if (target.c === 4) {
         isStageClearing = true;
         stopTimer();
@@ -1617,7 +1730,6 @@
           if (currentStageIdx < 9) {
             openStageClearModal();
           } else {
-            // Stage 10 cleared -> Show Difficulty Final Summary Screen
             showTierFinalSummary(currentTierKey);
           }
         }, 560);
